@@ -170,11 +170,7 @@ class Detection():
             image = Image(i + 1, 1, 'gray').get_image()
             gamma = self.adjust_gamma(image) # гамма-коррекция изображения
             log = self.log_transform(image) # логарифмирование изображения
-            pca_1 = self.pca(gamma) # пса гаммы
-            pca_2 = self.pca(log) # пса лог
-            dct_1 = self.dct(pca_1) # дст пса 1
-            dct_2 = self.dct(pca_2) # дст пса 2
-            result = np.mean([dct_1, dct_2], axis=0) # слияние вышеполученных результатов
+            result = np.mean([gamma, log], axis=0) # слияние вышеполученных результатов
             # загрузка полученного изображения в массив эталонов
             self.standards.append(result)
         
@@ -185,17 +181,13 @@ class Detection():
                 image = Image(i + 1, 1, 'gray').get_image()
                 gamma = self.adjust_gamma(image)
                 log = self.log_transform(image)
-                pca_1 = self.pca(gamma)
-                pca_2 = self.pca(log)
-                dct_1 = self.dct(pca_1)
-                dct_2 = self.dct(pca_2)
-                result = np.mean([dct_1, dct_2], axis=0)
+                result = np.mean([gamma, log], axis=0)
                 self.tests[i].append(result)
     
     # метод, реализующей коррекцию гаммы.
     # он принимает такие входные данные, как
     # само изображение, а также коэффициент гаммы
-    def adjust_gamma(self, image, gamma=2): # <---------------------------- изименение гаммы для точности распознавания
+    def adjust_gamma(self, image, gamma=2):
         invGamma = 1.0 / gamma
         table = [((i / 255) ** invGamma) * 255 for i in range(256)]
         table = np.array(table, np.uint8)
@@ -210,22 +202,21 @@ class Detection():
         cv.normalize(log, None, 0, 255, cv.NORM_MINMAX, dtype=cv.CV_8U)
         # это все просто вычисления и вывод
         return log
-
-    # сходство вычисляется через косинусное расстояние
-    # после переводится в проценты.
-    def sim(self, image_1, image_2):
-        sim = 1 - cosine(image_1.flatten(), image_2.flatten())
-
-        return sim * 100
-
-
+    
     # метод отвечающий за 2D DCT, а также
     # за вычисление сходства двух изображений в процентах.
-    # метод принимает изображение на вход
-    def dct(self, image):
-        dct = cv.dct(np.float32(image))
-
-        return dct
+    # сходство вычисляется через косинусное расстояние
+    # после переводится в проценты.
+    # метод принимает два изображение на вход
+    def dct(self, image_1, image_2):
+        dct1 = cv.dct(np.float32(image_1))
+        dct2 = cv.dct(np.float32(image_2))
+        sim = 1 - cosine(dct1.flatten(), dct2.flatten())
+        # тут берется DCT от каждого из двух полученных
+        # изображений, после чего между полученными данными
+        # вычисляется косинусное расстояние и
+        # выводится в процентах
+        return sim * 100
     
     # метод отвечающий за PCA
     # принимает на вход одно изображение
@@ -236,7 +227,7 @@ class Detection():
         # изображения. если кратко, то метод берет
         # гланвые компоненты (основную информацию)
         # из изображения и выводит их
-        comp = PCA(n_components=42) # <-------------------------------------- кол-во компонентов для сжатия изображения
+        comp = PCA(n_components=168)
         image_pca = comp.fit_transform(image)
 
         return image_pca
@@ -260,10 +251,10 @@ class Detection():
                 for k in range(self.m):
                     # идет вычисление сначала PCA,
                     # потом DCT и косинусное расстояние
-                    sim = self.sim(self.standards[k],
+                    dct = self.dct(self.pca(self.standards[k]), 
                                    self.pca(test))
                    
-                    compared.append(sim)
+                    compared.append(dct)
                 
                 # результат заносится в массив
                 self.result[i].append([j, np.argmax(compared)])
